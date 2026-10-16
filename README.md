@@ -40,6 +40,10 @@ See [Bevy's Linux dependencies](https://github.com/bevyengine/bevy/blob/v0.18.1/
   cells, one cell per simulation step. The player safely supports a resting stone
   when digging directly beneath it. A stone crushes the player only if it was
   already falling, having moved through at least one empty cell before impact.
+- Moving left or right into a stone pushes it one cell if the cell beyond is empty.
+  Dirt or another stone blocks the push; stones cannot be pushed vertically or in chains.
+  The player steps into the stone's old cell. The pushed stone can fall or slip starting
+  on the next simulation step.
 - A stone resting on another stone slips sideways if the side cell and the cell
   below that side are empty and clear of the player. When both sides are available,
   it chooses randomly (reproducibly from the seed and simulation tick). It slides
@@ -50,7 +54,7 @@ See [Bevy's Linux dependencies](https://github.com/bevyengine/bevy/blob/v0.18.1/
   freeze until approached again. The map expands in all directions without predefined bounds.
 - Explored chunks and changes remain in memory throughout the session. Memory use
   grows with exploration; disk saves and unloading are future work.
-- Stones cannot yet be pushed. Creatures, stats, inventory, and magic are future work.
+- Creatures, stats, inventory, and magic are future work.
 
 ## Development
 

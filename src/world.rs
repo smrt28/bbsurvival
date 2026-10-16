@@ -119,11 +119,23 @@ impl World {
             .collect();
         self.physics_tick = self.physics_tick.wrapping_add(1);
         self.ensure_area(self.player, ACTIVE_RADIUS + 2);
+        let mut pushed = None;
         if direction.x.abs() + direction.y.abs() == 1 {
             let destination = self.player.offset(direction.x, direction.y);
             if matches!(self.tile(destination), Some(Tile::Empty | Tile::Dirt)) {
                 self.tiles.insert(destination, Tile::Empty);
                 self.player = destination;
+            } else if direction.y == 0 && self.tile(destination) == Some(Tile::Stone) {
+                let beyond = destination.offset(direction.x, 0);
+                if self.tile(beyond) == Some(Tile::Empty) {
+                    self.tiles.insert(destination, Tile::Empty);
+                    self.tiles.insert(beyond, Tile::Stone);
+                    self.player = destination;
+                    pushed = Some(StoneMotion {
+                        from: destination,
+                        to: beyond,
+                    });
+                }
             }
         }
         // Generate before physics, including a halo beyond the active region.
@@ -132,7 +144,10 @@ impl World {
         for y in self.player.y - ACTIVE_RADIUS..=self.player.y + ACTIVE_RADIUS {
             for x in self.player.x - ACTIVE_RADIUS..=self.player.x + ACTIVE_RADIUS {
                 let cell = Cell::new(x, y);
-                if self.tile(cell) == Some(Tile::Stone) {
+                // A pushed stone already used its one-cell move this tick.
+                if self.tile(cell) == Some(Tile::Stone)
+                    && pushed.as_ref().is_none_or(|motion| motion.to != cell)
+                {
                     stones.push(cell);
                 }
             }
@@ -150,6 +165,7 @@ impl World {
                     .then_some(StoneMotion { from, to })
             })
             .collect();
+        moves.extend(pushed);
         // Falling has priority over slipping. Reserve destinations so a rolling
         // stone cannot collide with a falling stone or another rolling stone.
         let mut reserved: HashSet<_> = moves.iter().map(|motion| motion.to).collect();
@@ -242,6 +258,100 @@ mod tests {
         world.tiles.insert(Cell::new(2, 0), Tile::Stone);
         world.step(Cell::new(1, 0));
         assert_eq!(world.player, Cell::new(1, 0));
+    }
+
+    #[test]
+    fn player_pushes_left_and_right_into_empty_cells() {
+        for dx in [-1, 1] {
+            let mut world = World::new(1);
+            clear_test_area(&mut world);
+            world.tiles.insert(Cell::new(dx, 0), Tile::Stone);
+            world.tiles.insert(Cell::new(2 * dx, 0), Tile::Empty);
+            world.tiles.insert(Cell::new(3 * dx, 0), Tile::Empty);
+            for distance in [1, 2] {
+                world.step(Cell::new(dx, 0));
+                assert!(!world.dead);
+                assert_eq!(world.player, Cell::new(distance * dx, 0));
+                assert_eq!(world.previous_player, Cell::new((distance - 1) * dx, 0));
+                assert_eq!(world.tile(world.player), Some(Tile::Empty));
+                assert_eq!(
+                    world.tile(Cell::new((distance + 1) * dx, 0)),
+                    Some(Tile::Stone)
+                );
+                assert_eq!(world.stone_motion.len(), 1);
+                assert_eq!(world.stone_motion[0].from, world.player);
+                assert_eq!(world.stone_motion[0].to, Cell::new((distance + 1) * dx, 0));
+            }
+        }
+    }
+
+    #[test]
+    fn dirt_and_stones_block_pushing_without_being_cleared() {
+        for dx in [-1, 1] {
+            for blocker in [Tile::Dirt, Tile::Stone] {
+                let mut world = World::new(1);
+                clear_test_area(&mut world);
+                world.tiles.insert(Cell::new(dx, 0), Tile::Stone);
+                world.tiles.insert(Cell::new(2 * dx, 0), blocker);
+                world.step(Cell::new(dx, 0));
+                assert_eq!(world.player, Cell::default());
+                assert_eq!(world.tile(Cell::new(dx, 0)), Some(Tile::Stone));
+                assert_eq!(world.tile(Cell::new(2 * dx, 0)), Some(blocker));
+            }
+        }
+    }
+
+    #[test]
+    fn player_cannot_push_stones_vertically() {
+        for dy in [-1, 1] {
+            let mut world = World::new(1);
+            clear_test_area(&mut world);
+            world.tiles.insert(Cell::new(0, dy), Tile::Stone);
+            world.tiles.insert(Cell::new(0, 2 * dy), Tile::Empty);
+            world.step(Cell::new(0, dy));
+            assert!(!world.dead);
+            assert_eq!(world.player, Cell::default());
+            if dy > 0 {
+                assert_eq!(world.tile(Cell::new(0, dy)), Some(Tile::Stone));
+                assert_eq!(world.tile(Cell::new(0, 2 * dy)), Some(Tile::Empty));
+            } else {
+                // Gravity can move the lower stone, but the player must not
+                // move into its old cell as though pushing it downwards.
+                assert_eq!(world.tile(Cell::new(0, dy)), Some(Tile::Empty));
+                assert_eq!(world.tile(Cell::new(0, 2 * dy)), Some(Tile::Stone));
+            }
+        }
+    }
+
+    #[test]
+    fn pushed_stone_waits_until_next_tick_to_fall() {
+        let mut world = World::new(1);
+        clear_test_area(&mut world);
+        world.tiles.insert(Cell::new(1, 0), Tile::Stone);
+        world.tiles.insert(Cell::new(2, 0), Tile::Empty);
+        world.tiles.insert(Cell::new(2, -1), Tile::Empty);
+        world.step(Cell::new(1, 0));
+        assert_eq!(world.tile(Cell::new(2, 0)), Some(Tile::Stone));
+        assert_eq!(world.tile(Cell::new(2, -1)), Some(Tile::Empty));
+        assert_eq!(world.stone_motion.len(), 1);
+        world.step(Cell::default());
+        assert_eq!(world.tile(Cell::new(2, 0)), Some(Tile::Empty));
+        assert_eq!(world.tile(Cell::new(2, -1)), Some(Tile::Stone));
+        assert!(!world.dead);
+    }
+
+    #[test]
+    fn push_destination_is_reserved_against_falling_stones() {
+        let mut world = World::new(1);
+        clear_test_area(&mut world);
+        world.tiles.insert(Cell::new(1, 0), Tile::Stone);
+        world.tiles.insert(Cell::new(2, 0), Tile::Empty);
+        world.tiles.insert(Cell::new(2, 1), Tile::Stone);
+        world.step(Cell::new(1, 0));
+        assert_eq!(world.tile(Cell::new(2, 0)), Some(Tile::Stone));
+        assert_eq!(world.tile(Cell::new(2, 1)), Some(Tile::Stone));
+        assert_eq!(world.stone_motion.len(), 1);
+        assert!(!world.dead);
     }
 
     #[test]

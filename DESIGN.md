@@ -43,6 +43,8 @@ Inventory capacity, item stacking, equipment slots, item effects, and how items 
 - Stones on top of stones slip left or right when the side and the cell beneath
   that side are free; if both sides are free, choose randomly. Movement is horizontal
   first, followed by falling, to keep transitions between adjacent cells.
+- The player can push a stone left or right into an empty cell. Dirt or another
+  stone beyond it blocks pushing. The player and stone each move one adjacent cell.
 - Keep player and stone movement smooth between adjacent cells.
 
 The prototype uses seeded chunks, a local gravity simulation, four-direction input,
