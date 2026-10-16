@@ -50,11 +50,19 @@ See [Bevy's Linux dependencies](https://github.com/bevyengine/bevy/blob/v0.18.1/
   one cell horizontally, then can fall on the next step. Dirt below prevents slipping.
 - Player movement and falling stones animate smoothly over a 0.12-second step.
   A departing player reserves their old cell until the step finishes.
+- A harmless purple triangular creature starts in the starting pocket. Its point
+  shows its heading. It follows obstacles with its right hand: try right, forward,
+  left, then backward; wait if surrounded. It moves smoothly through empty cells
+  without digging. Dirt, stones, the player, and other creatures block it.
+- Creatures are solid and cannot be crushed or pushed. They block falling and
+  slipping stones, stone pushes, and player movement without causing damage.
+  Moving entities reserve both their old and new cells for the step, preventing
+  creatures from overlapping or exchanging cells through each other.
 - Gravity runs within 24 cells of the player, beyond the visible area. Distant areas
   freeze until approached again. The map expands in all directions without predefined bounds.
 - Explored chunks and changes remain in memory throughout the session. Memory use
   grows with exploration; disk saves and unloading are future work.
-- Creatures, stats, inventory, and magic are future work.
+- Creature spawning beyond the starter creature, stats, inventory, and magic are future work.
 
 ## Development
 

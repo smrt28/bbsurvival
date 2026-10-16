@@ -45,6 +45,9 @@ Inventory capacity, item stacking, equipment slots, item effects, and how items 
   first, followed by falling, to keep transitions between adjacent cells.
 - The player can push a stone left or right into an empty cell. Dirt or another
   stone beyond it blocks pushing. The player and stone each move one adjacent cell.
+- One harmless starter creature follows walls using the right-hand rule, treating
+  all occupied cells as obstacles. It moves smoothly, does not dig or attack, and
+  blocks other creatures, stones, and the player. Stones cannot crush it.
 - Keep player and stone movement smooth between adjacent cells.
 
 The prototype uses seeded chunks, a local gravity simulation, four-direction input,

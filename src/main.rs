@@ -18,8 +18,10 @@ struct Game {
 struct TileArt {
     dirt: Handle<Mesh>,
     stone: Handle<Mesh>,
+    creature: Handle<Mesh>,
     dirt_colors: Vec<Handle<ColorMaterial>>,
     stone_color: Handle<ColorMaterial>,
+    creature_color: Handle<ColorMaterial>,
 }
 
 #[derive(Component)]
@@ -75,6 +77,7 @@ fn setup(
 
     let dirt = meshes.add(Rectangle::new(CELL_SIZE - 1.0, CELL_SIZE - 1.0));
     let stone = meshes.add(RegularPolygon::new(14.5, 8));
+    let creature = meshes.add(RegularPolygon::new(13.0, 3));
     let dirt_colors: Vec<_> = (0..5)
         .map(|shade| {
             let shade = shade as f32 * 0.018;
@@ -82,6 +85,7 @@ fn setup(
         })
         .collect();
     let stone_color = materials.add(Color::srgb(0.57, 0.64, 0.70));
+    let creature_color = materials.add(Color::srgb(0.83, 0.43, 0.95));
     for y in -VIEW_Y..=VIEW_Y {
         for x in -VIEW_X..=VIEW_X {
             commands.spawn((
@@ -95,8 +99,10 @@ fn setup(
     commands.insert_resource(TileArt {
         dirt,
         stone,
+        creature,
         dirt_colors,
         stone_color,
+        creature_color,
     });
 
     let body = meshes.add(Rectangle::new(20.0, 23.0));
@@ -220,17 +226,34 @@ fn render_world(
         .iter()
         .map(|motion| (motion.to, motion.from))
         .collect();
+    let creatures: std::collections::HashMap<_, _> = world
+        .creatures
+        .iter()
+        .map(|creature| (creature.position, creature))
+        .collect();
 
     for (visual, mut mesh, mut material, mut transform, mut visibility) in &mut tiles {
         let cell = world.player.offset(visual.0.x, visual.0.y);
         let tile = world.tile(cell);
-        if matches!(tile, None | Some(Tile::Empty)) {
+        let creature = creatures.get(&cell);
+        if creature.is_none() && matches!(tile, None | Some(Tile::Empty)) {
             *visibility = Visibility::Hidden;
             continue;
         }
         *visibility = Visibility::Inherited;
         let mut position = relative(cell, world.player);
-        if tile == Some(Tile::Stone) {
+        transform.rotation = Quat::IDENTITY;
+        let mut depth = 0.0;
+        if let Some(creature) = creature {
+            mesh.0 = art.creature.clone();
+            material.0 = art.creature_color.clone();
+            position += relative(creature.previous_position, cell) * (1.0 - alpha);
+            transform.rotation = Quat::from_rotation_z(
+                (creature.heading.y as f32).atan2(creature.heading.x as f32)
+                    - std::f32::consts::FRAC_PI_2,
+            );
+            depth = 2.0;
+        } else if tile == Some(Tile::Stone) {
             mesh.0 = art.stone.clone();
             material.0 = art.stone_color.clone();
             if let Some(from) = moving_stones.get(&cell) {
@@ -240,7 +263,7 @@ fn render_world(
             mesh.0 = art.dirt.clone();
             material.0 = art.dirt_colors[(cell_hash(world.seed, cell) % 5) as usize].clone();
         }
-        transform.translation = (position - camera_offset).extend(0.0);
+        transform.translation = (position - camera_offset).extend(depth);
     }
     for mut visibility in &mut player {
         *visibility = if world.dead && alpha >= 1.0 {
